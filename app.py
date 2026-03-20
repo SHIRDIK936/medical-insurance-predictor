@@ -111,8 +111,7 @@ if st.button("Predict Price"):
             if stress == "high": inr *= 1.10
             if income == "high": inr *= 1.05
 
-            # 6. Success Display
-            st.balloons()
+            # 6. Success Display (Balloons removed)
             st.success(f"### Estimated Insurance Cost: {format_inr(inr)}")
             
         except Exception as e:
