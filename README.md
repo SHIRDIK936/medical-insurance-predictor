@@ -1,4 +1,4 @@
-#  Medical Insurance Price Prediction (Deep Learning)
+#  Medical Insurance Price Prediction
 
 ## Project Overview
 
