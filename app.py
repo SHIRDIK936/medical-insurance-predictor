@@ -10,7 +10,7 @@ scaler = pickle.load(open("scaler.pkl", "rb"))
 st.set_page_config(page_title="Insurance Predictor", layout="centered")
 
 # Title
-st.markdown("<h1 style='text-align: center; color: #4CAF50;'> Medical Insurance Price Prediction</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #4CAF50;'>Medical Insurance Price Prediction</h1>", unsafe_allow_html=True)
 st.divider()
 
 # 🧾 PERSONAL DETAILS
@@ -58,23 +58,14 @@ input_data = np.array([[age, bmi, children, sex_male, smoker_yes,
 # Scale input
 input_data = scaler.transform(input_data)
 
-# INR formatting function
-def format_inr(number):
-    number = round(number, 2)
-    s = str(number)
-    if '.' in s:
-        integer, decimal = s.split('.')
-    else:
-        integer, decimal = s, '00'
+# INR formatting
+def format_inr(amount):
+    amount = round(amount, 2)
+    integer, decimal = str(amount).split(".")
     last3 = integer[-3:]
-    rest = integer[:-3]
-    if rest != '':
-        rest = rest[::-1]
-        rest = ','.join([rest[i:i+2] for i in range(0, len(rest), 2)])
-        rest = rest[::-1]
-        formatted = rest + ',' + last3
-    else:
-        formatted = last3
+    rest = integer[:-3][::-1]
+    rest = ','.join([rest[i:i+2] for i in range(0, len(rest), 2)])[::-1] if rest else ''
+    formatted = f"{rest},{last3}" if rest else last3
     return f"₹{formatted}.{decimal}"
 
 # Prediction
@@ -90,35 +81,33 @@ if st.button("Predict Price"):
     elif len(phone_clean) != 10:
         st.warning("⚠️ Phone number must be exactly 10 digits")
     else:
+        # Model prediction
         result = model.predict(input_data)
         prediction = float(result[0])
 
-        # ✅ Prevent negative predictions
+        # ✅ Prevent negative values
         prediction = max(0, prediction)
 
         # Convert USD → INR
         inr = prediction * 83
 
-        # Adjustments based on medical history
+        # Adjustments
         if any(word in medical_history_clean for word in ["diabetes", "bp", "heart", "asthma"]):
             inr *= 1.2
 
-        # Adjustments based on activity level
         if activity == "high":
             inr *= 0.9
         elif activity == "low":
             inr *= 1.1
 
-        # Adjustments based on stress level
         if stress == "high":
             inr *= 1.1
 
-        # Adjustments based on income
         if income == "high":
             inr *= 1.05
 
-        # ✅ Ensure minimum value is at least 1000
-        inr = max(inr, 1000)
+        # ✅ Prevent negative or zero after adjustments
+        inr = max(0, inr)
 
         st.success(f"Estimated Insurance Cost: {format_inr(inr)}")
 
