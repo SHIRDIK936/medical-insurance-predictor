@@ -58,10 +58,12 @@ input_data = np.array([[age, bmi, children, sex_male, smoker_yes,
 # Scale input
 input_data = scaler.transform(input_data)
 
-# INR formatting
+# INR formatting (fixed to handle integers safely)
 def format_inr(amount):
-    amount = round(amount, 2)
-    integer, decimal = str(amount).split(".")
+    # Ensure two decimals
+    s = f"{amount:.2f}"
+    integer, decimal = s.split(".")
+    
     last3 = integer[-3:]
     rest = integer[:-3][::-1]
     rest = ','.join([rest[i:i+2] for i in range(0, len(rest), 2)])[::-1] if rest else ''
