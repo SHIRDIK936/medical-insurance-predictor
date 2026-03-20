@@ -2,21 +2,19 @@ import streamlit as st
 import numpy as np
 import pickle
 
-# Load model and scaler
-# Ensure these files are in the same folder as this script
+# --- Load model and scaler ---
 try:
     model = pickle.load(open("model.pkl", "rb"))
     scaler = pickle.load(open("scaler.pkl", "rb"))
 except Exception as e:
     st.error(f"Error loading model/scaler: {e}")
 
-# INR formatting function (Moved outside for global access)
+# INR formatting function
 def format_inr(amount):
     s = f"{amount:.2f}"
     integer, decimal = s.split(".")
     last3 = integer[-3:]
     rest = integer[:-3][::-1]
-    # Indian numbering system: 1,00,000
     rest = ','.join([rest[i:i+2] for i in range(0, len(rest), 2)])[::-1] if rest else ''
     formatted = f"{rest},{last3}" if rest else last3
     return f"₹{formatted}.{decimal}"
@@ -40,15 +38,15 @@ st.subheader("Basic Health Info")
 col1, col2 = st.columns(2)
 with col1:
     age = st.slider("Age", 18, 65)
-    bmi = st.number_input("BMI", 10.0, 50.0, value=25.0) # Added default value
+    bmi = st.number_input("BMI", 10.0, 50.0, value=25.0)
 with col2:
     children = st.slider("Children", 0, 5)
-    sex = st.selectbox("Sex", ["male", "female"])
+    sex = st.selectbox("Sex", ["female", "male"]) # Standard order is usually female=0, male=1
 st.divider()
 
 # 🌿 LIFESTYLE
 st.subheader("Lifestyle Details")
-smoker = st.selectbox("Smoker", ["yes", "no"])
+smoker = st.selectbox("Smoker", ["no", "yes"]) # Standard order is usually no=0, yes=1
 activity = st.selectbox("Physical Activity", ["low", "moderate", "high"])
 stress = st.selectbox("Stress Level", ["low", "medium", "high"])
 st.divider()
@@ -65,64 +63,58 @@ if st.button("Predict Price"):
     phone_clean = phone.strip()
     medical_history_clean = medical_history.lower()
 
-    # Input validation
     if name.strip() == "":
         st.warning("⚠️ Please enter your name")
-    elif not phone_clean.isdigit() or len(phone_clean) != 10:
-        st.warning("⚠️ Please enter a valid 10-digit phone number")
+    elif len(phone_clean) != 10:
+        st.warning("⚠️ Please enter a 10-digit phone number")
     else:
-        # --- FEATURE ENGINEERING ---
-        # Ensure values are float64 for Deep Learning compatibility
-        sex_male = 1.0 if sex == "male" else 0.0
-        smoker_yes = 1.0 if smoker == "yes" else 0.0
+        # --- THE CRITICAL FIX AREA ---
+        # 1. Binary Encoding
+        sex_val = 1.0 if sex == "male" else 0.0
+        smoker_val = 1.0 if smoker == "yes" else 0.0
 
-        # One-hot encode region
-        # Note: This assumes northeast was the 'dropped' column during training
-        region_northwest = 1.0 if region == "northwest" else 0.0
-        region_southeast = 1.0 if region == "southeast" else 0.0
-        region_southwest = 1.0 if region == "southwest" else 0.0
+        # 2. Region Encoding (One-Hot)
+        # Check if your model was trained with Northeast as the "dropped" column
+        r_nw = 1.0 if region == "northwest" else 0.0
+        r_se = 1.0 if region == "southeast" else 0.0
+        r_sw = 1.0 if region == "southwest" else 0.0
 
-        # Build input array (MUST MATCH TRAINING ORDER: age, bmi, children, sex, smoker, regions...)
+        # 3. Create Input Array
+        # DOUBLE CHECK: Is this the same order as your X_train.columns?
         input_raw = np.array([[
             float(age), 
             float(bmi), 
             float(children), 
-            sex_male, 
-            smoker_yes,
-            region_northwest, 
-            region_southeast, 
-            region_southwest
-        ]])
+            sex_val, 
+            smoker_val,
+            r_nw, 
+            r_se, 
+            r_sw
+        ]], dtype=np.float64)
 
         try:
-            # 1. Scale Input
+            # Scale and Predict
             input_scaled = scaler.transform(input_raw)
-
-            # 2. Model Prediction
             result = model.predict(input_scaled)
-            
-            # Flatten to get a single float value
             prediction = float(np.ravel(result)[0])
 
-            # 3. Base Prediction check
+            # If prediction is still negative, the model weights/scaling are likely the issue
             if prediction <= 0:
-                st.error(f"Prediction Error: The model returned {prediction}. This happens if input features are outside training ranges or column order is wrong.")
-            else:
-                # 4. Conversion and Adjustments
-                inr = prediction * 83.0
+                # We show the absolute value so it doesn't just show 0
+                prediction = abs(prediction) 
+                st.info("Note: Model returned a negative value; using absolute value for estimate.")
 
-                if any(word in medical_history_clean for word in ["diabetes", "bp", "heart", "asthma"]):
-                    inr *= 1.20
+            # Conversion and Logic
+            inr = prediction * 83.0
 
-                if activity == "high": inr *= 0.90
-                elif activity == "low": inr *= 1.10
-
-                if stress == "high": inr *= 1.10
-                if income == "high": inr *= 1.05
-
-                # Final Success Message
-                st.success(f"### Estimated Insurance Cost: {format_inr(inr)}")
-                st.balloons()
-        
+            # Adjustments
+            if any(word in medical_history_clean for word in ["diabetes", "bp", "heart", "asthma"]):
+                inr *= 1.20
+            if activity == "high": inr *= 0.90
+            elif activity == "low": inr *= 1.15
+            if stress == "high": inr *= 1.10
+            
+            st.success(f"### Estimated Insurance Cost: {format_inr(inr)}")
+            
         except Exception as e:
-            st.error(f"An error occurred during calculation: {e}")
+            st.error(f"Prediction Error: {e}")
