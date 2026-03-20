@@ -1,10 +1,9 @@
 import streamlit as st
 import numpy as np
 import pickle
-from tensorflow.keras.models import load_model
 
 # Load model and scaler
-model = load_model("model.h5", compile=False)
+model = pickle.load(open("model.pkl", "rb"))
 scaler = pickle.load(open("scaler.pkl", "rb"))
 
 # Page settings
@@ -16,7 +15,7 @@ st.markdown("<h1 style='text-align: center; color: #4CAF50;'> Medical Insurance 
 st.divider()
 
 # 🧾 PERSONAL DETAILS
-st.subheader(" Personal Details")
+st.subheader("Personal Details")
 
 name = st.text_input("Full Name")
 phone = st.text_input("Phone Number")
@@ -25,7 +24,7 @@ email = st.text_input("Email (optional)")
 st.divider()
 
 # 🩺 BASIC HEALTH INFO
-st.subheader(" Basic Health Info")
+st.subheader("Basic Health Info")
 
 col1, col2 = st.columns(2)
 
@@ -40,7 +39,7 @@ with col2:
 st.divider()
 
 # 🌿 LIFESTYLE
-st.subheader(" Lifestyle Details")
+st.subheader("Lifestyle Details")
 
 smoker = st.selectbox("Smoker", ["yes", "no"])
 activity = st.selectbox("Physical Activity", ["low", "moderate", "high"])
@@ -49,7 +48,7 @@ stress = st.selectbox("Stress Level", ["low", "medium", "high"])
 st.divider()
 
 # 🏥 MEDICAL + FINANCIAL
-st.subheader(" Medical & Financial Details")
+st.subheader("Medical & Financial Details")
 
 medical_history = st.text_area("Medical History (e.g., diabetes, BP, none)")
 income = st.selectbox("Income Level", ["low", "middle", "high"])
@@ -111,7 +110,11 @@ if st.button("Predict Price"):
 
     else:
         result = model.predict(input_data)
-        inr = result[0][0] * 83
+
+        # Works for sklearn models
+        prediction = result[0]
+
+        inr = prediction * 83  # USD → INR
 
         # Adjustments
         if any(word in medical_history_clean for word in ["diabetes", "bp", "heart", "asthma"]):
