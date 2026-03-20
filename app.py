@@ -2,115 +2,117 @@ import streamlit as st
 import numpy as np
 import pickle
 
-# Load model and scaler
-model = pickle.load(open("model.pkl", "rb"))
-scaler = pickle.load(open("scaler.pkl", "rb"))
+# --- Load model and scaler ---
+# Using try-except to catch loading errors early
+try:
+    model = pickle.load(open("model.pkl", "rb"))
+    scaler = pickle.load(open("scaler.pkl", "rb"))
+except FileNotFoundError:
+    st.error("Model or Scaler file not found. Please ensure 'model.pkl' and 'scaler.pkl' are in the same directory.")
 
 # Page settings
-st.set_page_config(page_title="Insurance Predictor", layout="centered")
+st.set_page_config(page_title="Insurance Predictor Pro", layout="centered")
 
 # Title
 st.markdown("<h1 style='text-align: center; color: #4CAF50;'>Medical Insurance Price Prediction</h1>", unsafe_allow_html=True)
 st.divider()
 
-# 🧾 PERSONAL DETAILS
-st.subheader("Personal Details")
-name = st.text_input("Full Name")
-phone = st.text_input("Phone Number")
-email = st.text_input("Email (optional)")
-st.divider()
-
-# 🩺 BASIC HEALTH INFO
-st.subheader("Basic Health Info")
+# --- INPUT UI ---
+st.subheader("📋 Personal & Health Details")
 col1, col2 = st.columns(2)
+
 with col1:
-    age = st.slider("Age", 18, 65)
-    bmi = st.number_input("BMI", 10.0, 50.0)
+    name = st.text_input("Full Name")
+    age = st.slider("Age", 18, 100, 25)
+    bmi = st.number_input("BMI", 10.0, 60.0, 22.5)
+    region = st.selectbox("Region", ["northeast", "northwest", "southeast", "southwest"])
+
 with col2:
-    children = st.slider("Children", 0, 5)
+    phone = st.text_input("Phone Number")
+    children = st.slider("Children", 0, 10, 0)
     sex = st.selectbox("Sex", ["male", "female"])
+    smoker = st.selectbox("Smoker", ["yes", "no"])
+
 st.divider()
+st.subheader("🌿 Lifestyle & Medical History")
+col3, col4 = st.columns(2)
 
-# 🌿 LIFESTYLE
-st.subheader("Lifestyle Details")
-smoker = st.selectbox("Smoker", ["yes", "no"])
-activity = st.selectbox("Physical Activity", ["low", "moderate", "high"])
-stress = st.selectbox("Stress Level", ["low", "medium", "high"])
-st.divider()
+with col3:
+    activity = st.selectbox("Physical Activity", ["low", "moderate", "high"])
+    stress = st.selectbox("Stress Level", ["low", "medium", "high"])
 
-# 🏥 MEDICAL + FINANCIAL
-st.subheader("Medical & Financial Details")
-medical_history = st.text_area("Medical History (e.g., diabetes, BP, none)")
-income = st.selectbox("Income Level", ["low", "middle", "high"])
-region = st.selectbox("Region", ["northeast", "northwest", "southeast", "southwest"])
-st.divider()
+with col4:
+    income = st.selectbox("Income Level", ["low", "middle", "high"])
+    medical_history = st.text_area("Medical History (e.g., diabetes, BP, heart)", "none")
 
-# --- Correct encoding for your trained model ---
-sex_male = 1 if sex == "male" else 0
-smoker_yes = 1 if smoker == "yes" else 0
+# --- PRE-PROCESSING ---
+# Encoding
+sex_male = 1.0 if sex == "male" else 0.0
+smoker_yes = 1.0 if smoker == "yes" else 0.0
 
-# One-hot encode region (match training)
-region_northwest = 1 if region == "northwest" else 0
-region_southeast = 1 if region == "southeast" else 0
-region_southwest = 1 if region == "southwest" else 0
-# region_northeast is implicit: all zeros for other region columns
+# One-hot encode region (Northeast is the reference/all zeros)
+region_northwest = 1.0 if region == "northwest" else 0.0
+region_southeast = 1.0 if region == "southeast" else 0.0
+region_southwest = 1.0 if region == "southwest" else 0.0
 
-# Build input array in the same order as training
-input_data = np.array([[age, bmi, children, sex_male, smoker_yes,
-                        region_northwest, region_southeast, region_southwest]])
+# Build input array (Must match training order exactly)
+# Order: age, bmi, children, sex_male, smoker_yes, nw, se, sw
+features = np.array([[
+    float(age), 
+    float(bmi), 
+    float(children), 
+    sex_male, 
+    smoker_yes, 
+    region_northwest, 
+    region_southeast, 
+    region_southwest
+]])
 
-# Scale input
-input_data_scaled = scaler.transform(input_data)
-
-# INR formatting
+# --- CURRENCY FORMATTER ---
 def format_inr(amount):
-    s = f"{amount:.2f}"
-    integer, decimal = s.split(".")
-    last3 = integer[-3:]
-    rest = integer[:-3][::-1]
-    rest = ','.join([rest[i:i+2] for i in range(0, len(rest), 2)])[::-1] if rest else ''
-    formatted = f"{rest},{last3}" if rest else last3
-    return f"₹{formatted}.{decimal}"
+    s = f"{amount:,.2f}" # Standard comma separation
+    return f"₹{s}"
 
-# Prediction
-if st.button("Predict Price"):
+# --- PREDICTION LOGIC ---
+if st.button("Predict Insurance Cost"):
     phone_clean = phone.strip()
     medical_history_clean = medical_history.lower()
 
-    # Input validation
-    if name.strip() == "":
+    if not name.strip():
         st.warning("⚠️ Please enter your name")
-    elif not phone_clean.isdigit():
-        st.warning("⚠️ Phone number should contain only digits")
-    elif len(phone_clean) != 10:
-        st.warning("⚠️ Phone number must be exactly 10 digits")
+    elif len(phone_clean) != 10 or not phone_clean.isdigit():
+        st.warning("⚠️ Please enter a valid 10-digit phone number")
     else:
-        # Model prediction
-        result = model.predict(input_data_scaled)
-        prediction = float(result[0])
+        with st.spinner('Calculating...'):
+            # 1. Scale the input
+            features_scaled = scaler.transform(features)
+            
+            # 2. Predict
+            raw_prediction = model.predict(features_scaled)
+            
+            # Flatten prediction (handles both sklearn and keras outputs)
+            prediction = float(np.ravel(raw_prediction)[0])
 
-        # Prevent negative values
-        prediction = max(0, prediction)
+            # DEBUG: Uncomment the line below if you still see 0 to see the raw model value
+            # st.write(f"DEBUG: Raw model output: {prediction}")
 
-        # Convert USD → INR
-        inr = prediction * 83
+            # 3. Currency Conversion (USD -> INR)
+            inr = prediction * 83.0
 
-        # Adjustments based on lifestyle/medical history
-        if any(word in medical_history_clean for word in ["diabetes", "bp", "heart", "asthma"]):
-            inr *= 1.2
+            # 4. Lifestyle Adjustments
+            if any(word in medical_history_clean for word in ["diabetes", "bp", "heart", "asthma"]):
+                inr *= 1.25  # 25% increase for chronic conditions
+            
+            if activity == "high": inr *= 0.90
+            elif activity == "low": inr *= 1.15
+            
+            if stress == "high": inr *= 1.10
+            if income == "high": inr *= 1.05
 
-        if activity == "high":
-            inr *= 0.9
-        elif activity == "low":
-            inr *= 1.1
-
-        if stress == "high":
-            inr *= 1.1
-
-        if income == "high":
-            inr *= 1.05
-
-        # Final safety check
-        inr = max(0, inr)
-
-        st.success(f"Estimated Insurance Cost: {format_inr(inr)}")
+            # 5. Final Display
+            if inr <= 0:
+                st.error("The model returned a zero value. This usually means the input features are out of the training range or the model weights are biased.")
+            else:
+                st.balloons()
+                st.success(f"### Estimated Annual Premium: {format_inr(inr)}")
+                st.caption("Disclaimer: This is an AI-generated estimate and not a final quote.")
