@@ -45,18 +45,19 @@ income = st.selectbox("Income Level", ["low", "middle", "high"])
 region = st.selectbox("Region", ["northeast", "northwest", "southeast", "southwest"])
 st.divider()
 
-# --- Convert categorical inputs using one-hot encoding ---
+# --- Correct encoding for your trained model ---
 sex_male = 1 if sex == "male" else 0
 smoker_yes = 1 if smoker == "yes" else 0
 
-region_northeast = 1 if region == "northeast" else 0
+# One-hot encode region (match training)
 region_northwest = 1 if region == "northwest" else 0
 region_southeast = 1 if region == "southeast" else 0
 region_southwest = 1 if region == "southwest" else 0
+# region_northeast is implicit: all zeros for other region columns
 
-# Input array (order must match model training!)
+# Build input array in the same order as training
 input_data = np.array([[age, bmi, children, sex_male, smoker_yes,
-                        region_northeast, region_northwest, region_southeast, region_southwest]])
+                        region_northwest, region_southeast, region_southwest]])
 
 # Scale input
 input_data_scaled = scaler.transform(input_data)
