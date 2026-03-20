@@ -3,11 +3,23 @@ import numpy as np
 import pickle
 
 # Load model and scaler
+# Ensure these files are in the same folder as this script
 try:
     model = pickle.load(open("model.pkl", "rb"))
     scaler = pickle.load(open("scaler.pkl", "rb"))
 except Exception as e:
-    st.error(f"Error loading files: {e}")
+    st.error(f"Error loading model/scaler: {e}")
+
+# INR formatting function (Moved outside for global access)
+def format_inr(amount):
+    s = f"{amount:.2f}"
+    integer, decimal = s.split(".")
+    last3 = integer[-3:]
+    rest = integer[:-3][::-1]
+    # Indian numbering system: 1,00,000
+    rest = ','.join([rest[i:i+2] for i in range(0, len(rest), 2)])[::-1] if rest else ''
+    formatted = f"{rest},{last3}" if rest else last3
+    return f"₹{formatted}.{decimal}"
 
 # Page settings
 st.set_page_config(page_title="Insurance Predictor", layout="centered")
@@ -28,7 +40,7 @@ st.subheader("Basic Health Info")
 col1, col2 = st.columns(2)
 with col1:
     age = st.slider("Age", 18, 65)
-    bmi = st.number_input("BMI", 10.0, 50.0)
+    bmi = st.number_input("BMI", 10.0, 50.0, value=25.0) # Added default value
 with col2:
     children = st.slider("Children", 0, 5)
     sex = st.selectbox("Sex", ["male", "female"])
@@ -48,7 +60,7 @@ income = st.selectbox("Income Level", ["low", "middle", "high"])
 region = st.selectbox("Region", ["northeast", "northwest", "southeast", "southwest"])
 st.divider()
 
-# --- Prediction Logic ---
+# Prediction
 if st.button("Predict Price"):
     phone_clean = phone.strip()
     medical_history_clean = medical_history.lower()
@@ -56,21 +68,22 @@ if st.button("Predict Price"):
     # Input validation
     if name.strip() == "":
         st.warning("⚠️ Please enter your name")
-    elif not phone_clean.isdigit():
-        st.warning("⚠️ Phone number should contain only digits")
-    elif len(phone_clean) != 10:
-        st.warning("⚠️ Phone number must be exactly 10 digits")
+    elif not phone_clean.isdigit() or len(phone_clean) != 10:
+        st.warning("⚠️ Please enter a valid 10-digit phone number")
     else:
-        # 1. Correct encoding and ensure FLOAT type for Deep Learning
+        # --- FEATURE ENGINEERING ---
+        # Ensure values are float64 for Deep Learning compatibility
         sex_male = 1.0 if sex == "male" else 0.0
         smoker_yes = 1.0 if smoker == "yes" else 0.0
 
+        # One-hot encode region
+        # Note: This assumes northeast was the 'dropped' column during training
         region_northwest = 1.0 if region == "northwest" else 0.0
         region_southeast = 1.0 if region == "southeast" else 0.0
         region_southwest = 1.0 if region == "southwest" else 0.0
 
-        # 2. Build input array (Check that this order matches your training X_train exactly)
-        input_data = np.array([[
+        # Build input array (MUST MATCH TRAINING ORDER: age, bmi, children, sex, smoker, regions...)
+        input_raw = np.array([[
             float(age), 
             float(bmi), 
             float(children), 
@@ -79,51 +92,37 @@ if st.button("Predict Price"):
             region_northwest, 
             region_southeast, 
             region_southwest
-        ]], dtype=np.float64)
+        ]])
 
-        # 3. Scale input
-        input_data_scaled = scaler.transform(input_data)
+        try:
+            # 1. Scale Input
+            input_scaled = scaler.transform(input_raw)
 
-        # 4. Model prediction + Flattening
-        # np.ravel ensures result is a single number even if model returns [[val]]
-        result = model.predict(input_data_scaled)
-        prediction = float(np.ravel(result)[0])
+            # 2. Model Prediction
+            result = model.predict(input_scaled)
+            
+            # Flatten to get a single float value
+            prediction = float(np.ravel(result)[0])
 
-        # Prevent negative values early
-        prediction = max(0.0, prediction)
+            # 3. Base Prediction check
+            if prediction <= 0:
+                st.error(f"Prediction Error: The model returned {prediction}. This happens if input features are outside training ranges or column order is wrong.")
+            else:
+                # 4. Conversion and Adjustments
+                inr = prediction * 83.0
 
-        # 5. Convert USD → INR
-        inr = prediction * 83.0
+                if any(word in medical_history_clean for word in ["diabetes", "bp", "heart", "asthma"]):
+                    inr *= 1.20
 
-        # Adjustments based on lifestyle/medical history
-        if any(word in medical_history_clean for word in ["diabetes", "bp", "heart", "asthma"]):
-            inr *= 1.2
+                if activity == "high": inr *= 0.90
+                elif activity == "low": inr *= 1.10
 
-        if activity == "high":
-            inr *= 0.9
-        elif activity == "low":
-            inr *= 1.1
+                if stress == "high": inr *= 1.10
+                if income == "high": inr *= 1.05
 
-        if stress == "high":
-            inr *= 1.1
-
-        if income == "high":
-            inr *= 1.05
-
-        # Final safety check
-        inr = max(0.0, inr)
-
-        # 6. INR formatting function
-        def format_inr(amount):
-            s = f"{amount:.2f}"
-            integer, decimal = s.split(".")
-            last3 = integer[-3:]
-            rest = integer[:-3][::-1]
-            rest = ','.join([rest[i:i+2] for i in range(0, len(rest), 2)])[::-1] if rest else ''
-            formatted = f"{rest},{last3}" if rest else last3
-            return f"₹{formatted}.{decimal}"
-
-        if inr == 0:
-            st.error("The model predicted 0. Please verify that the feature order matches your training script.")
-        else:
-            st.success(f"Estimated Insurance Cost: {format_inr(inr)}")
+                # Final Success Message
+                st.success(f"### Estimated Insurance Cost: {format_inr(inr)}")
+                st.balloons()
+        
+        except Exception as e:
+            st.error(f"An error occurred during calculation: {e}")
