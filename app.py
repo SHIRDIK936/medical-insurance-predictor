@@ -58,12 +58,10 @@ input_data = np.array([[age, bmi, children, sex_male, smoker_yes,
 # Scale input
 input_data = scaler.transform(input_data)
 
-# INR formatting (fixed to handle integers safely)
+# INR formatting (safe for integers and decimals)
 def format_inr(amount):
-    # Ensure two decimals
     s = f"{amount:.2f}"
     integer, decimal = s.split(".")
-    
     last3 = integer[-3:]
     rest = integer[:-3][::-1]
     rest = ','.join([rest[i:i+2] for i in range(0, len(rest), 2)])[::-1] if rest else ''
@@ -87,13 +85,13 @@ if st.button("Predict Price"):
         result = model.predict(input_data)
         prediction = float(result[0])
 
-        # ✅ Prevent negative values
+        # ✅ Prevent negative values only
         prediction = max(0, prediction)
 
         # Convert USD → INR
         inr = prediction * 83
 
-        # Adjustments
+        # Adjustments based on lifestyle/medical history
         if any(word in medical_history_clean for word in ["diabetes", "bp", "heart", "asthma"]):
             inr *= 1.2
 
@@ -108,8 +106,8 @@ if st.button("Predict Price"):
         if income == "high":
             inr *= 1.05
 
-        # ✅ Prevent negative or zero after adjustments
-        inr = max(0, inr)
+        # ✅ No artificial min/max applied
+        inr = max(0, inr)  # just prevent negative
 
         st.success(f"Estimated Insurance Cost: {format_inr(inr)}")
 
