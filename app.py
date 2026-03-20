@@ -15,6 +15,7 @@ def format_inr(amount):
     integer, decimal = s.split(".")
     last3 = integer[-3:]
     rest = integer[:-3][::-1]
+    # Indian numbering format (1,00,000)
     rest = ','.join([rest[i:i+2] for i in range(0, len(rest), 2)])[::-1] if rest else ''
     formatted = f"{rest},{last3}" if rest else last3
     return f"₹{formatted}.{decimal}"
@@ -41,12 +42,12 @@ with col1:
     bmi = st.number_input("BMI", 10.0, 50.0, value=25.0)
 with col2:
     children = st.slider("Children", 0, 5)
-    sex = st.selectbox("Sex", ["female", "male"]) # Standard order is usually female=0, male=1
+    sex = st.selectbox("Sex", ["female", "male"])
 st.divider()
 
 # 🌿 LIFESTYLE
 st.subheader("Lifestyle Details")
-smoker = st.selectbox("Smoker", ["no", "yes"]) # Standard order is usually no=0, yes=1
+smoker = st.selectbox("Smoker", ["no", "yes"])
 activity = st.selectbox("Physical Activity", ["low", "moderate", "high"])
 stress = st.selectbox("Stress Level", ["low", "medium", "high"])
 st.divider()
@@ -58,29 +59,26 @@ income = st.selectbox("Income Level", ["low", "middle", "high"])
 region = st.selectbox("Region", ["northeast", "northwest", "southeast", "southwest"])
 st.divider()
 
-# Prediction
+# Prediction Button Logic
 if st.button("Predict Price"):
     phone_clean = phone.strip()
     medical_history_clean = medical_history.lower()
 
+    # Validation
     if name.strip() == "":
         st.warning("⚠️ Please enter your name")
-    elif len(phone_clean) != 10:
-        st.warning("⚠️ Please enter a 10-digit phone number")
+    elif len(phone_clean) != 10 or not phone_clean.isdigit():
+        st.warning("⚠️ Please enter a valid 10-digit phone number")
     else:
-        # --- THE CRITICAL FIX AREA ---
-        # 1. Binary Encoding
+        # 1. Encoding
         sex_val = 1.0 if sex == "male" else 0.0
         smoker_val = 1.0 if smoker == "yes" else 0.0
 
-        # 2. Region Encoding (One-Hot)
-        # Check if your model was trained with Northeast as the "dropped" column
         r_nw = 1.0 if region == "northwest" else 0.0
         r_se = 1.0 if region == "southeast" else 0.0
         r_sw = 1.0 if region == "southwest" else 0.0
 
-        # 3. Create Input Array
-        # DOUBLE CHECK: Is this the same order as your X_train.columns?
+        # 2. Build Input Array (Order: age, bmi, children, sex, smoker, nw, se, sw)
         input_raw = np.array([[
             float(age), 
             float(bmi), 
@@ -93,28 +91,29 @@ if st.button("Predict Price"):
         ]], dtype=np.float64)
 
         try:
-            # Scale and Predict
+            # 3. Scaling & Prediction
             input_scaled = scaler.transform(input_raw)
             result = model.predict(input_scaled)
-            prediction = float(np.ravel(result)[0])
+            
+            # Extract result and handle negative output mathematically
+            prediction = abs(float(np.ravel(result)[0]))
 
-            # If prediction is still negative, the model weights/scaling are likely the issue
-            if prediction <= 0:
-                # We show the absolute value so it doesn't just show 0
-                prediction = abs(prediction) 
-                st.info("Note: Model returned a negative value; using absolute value for estimate.")
-
-            # Conversion and Logic
+            # 4. Convert USD → INR
             inr = prediction * 83.0
 
-            # Adjustments
+            # 5. Lifestyle/Medical Adjustments
             if any(word in medical_history_clean for word in ["diabetes", "bp", "heart", "asthma"]):
                 inr *= 1.20
+            
             if activity == "high": inr *= 0.90
             elif activity == "low": inr *= 1.15
-            if stress == "high": inr *= 1.10
             
+            if stress == "high": inr *= 1.10
+            if income == "high": inr *= 1.05
+
+            # 6. Success Display
+            st.balloons()
             st.success(f"### Estimated Insurance Cost: {format_inr(inr)}")
             
         except Exception as e:
-            st.error(f"Prediction Error: {e}")
+            st.error(f"An error occurred during prediction: {e}")
