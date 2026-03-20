@@ -42,23 +42,26 @@ st.divider()
 st.subheader("Medical & Financial Details")
 medical_history = st.text_area("Medical History (e.g., diabetes, BP, none)")
 income = st.selectbox("Income Level", ["low", "middle", "high"])
-region = st.selectbox("Region", ["northwest", "northeast", "southeast", "southwest"])
+region = st.selectbox("Region", ["northeast", "northwest", "southeast", "southwest"])
 st.divider()
 
-# Convert categorical inputs
+# --- Convert categorical inputs using one-hot encoding ---
 sex_male = 1 if sex == "male" else 0
 smoker_yes = 1 if smoker == "yes" else 0
+
+region_northeast = 1 if region == "northeast" else 0
 region_northwest = 1 if region == "northwest" else 0
 region_southeast = 1 if region == "southeast" else 0
 region_southwest = 1 if region == "southwest" else 0
 
+# Input array (order must match model training!)
 input_data = np.array([[age, bmi, children, sex_male, smoker_yes,
-                        region_northwest, region_southeast, region_southwest]])
+                        region_northeast, region_northwest, region_southeast, region_southwest]])
 
 # Scale input
-input_data = scaler.transform(input_data)
+input_data_scaled = scaler.transform(input_data)
 
-# INR formatting (safe for integers and decimals)
+# INR formatting
 def format_inr(amount):
     s = f"{amount:.2f}"
     integer, decimal = s.split(".")
@@ -82,10 +85,10 @@ if st.button("Predict Price"):
         st.warning("⚠️ Phone number must be exactly 10 digits")
     else:
         # Model prediction
-        result = model.predict(input_data)
+        result = model.predict(input_data_scaled)
         prediction = float(result[0])
 
-        # ✅ Prevent negative values only
+        # Prevent negative values
         prediction = max(0, prediction)
 
         # Convert USD → INR
@@ -106,9 +109,7 @@ if st.button("Predict Price"):
         if income == "high":
             inr *= 1.05
 
-        # ✅ No artificial min/max applied
-        inr = max(0, inr)  # just prevent negative
+        # Final safety check
+        inr = max(0, inr)
 
         st.success(f"Estimated Insurance Cost: {format_inr(inr)}")
-
-st.markdown("<hr>", unsafe_allow_html=True)
